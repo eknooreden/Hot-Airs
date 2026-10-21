@@ -1,7 +1,7 @@
 
 # ☕ HOT AIRS
 
-> ***⚠️ NOTICE:** This game is still in development! The **Upgrades** button currently does nothing, and some exciting features haven't been added yet.*
+> ***⚠️ NOTICE:** This game is still in development! The **Upgrades** button currently has only 1 item, and some exciting features haven't been added yet.*
 >
 > *The game isn't quite an adventure game right now, but it will be once it's complete!*
 >
