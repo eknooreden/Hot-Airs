@@ -9,14 +9,13 @@ cvs.addEventListener('pointermove', (e) => {
   st.m = lp(e);
   if (e.pointerId === st.joy.id) setJoy(st.m);
 });
-// canvas needs to be focusable, otherwise keys never reach the game (esp. inside itch.io's iframe)
 cvs.tabIndex = 0;
 cvs.style.outline = 'none';
 cvs.addEventListener('pointerdown', (e) => {
   window.focus();
   cvs.focus();
   onDown(lp(e), e.pointerId);
-  if (e.pointerId === st.joy.id) cvs.setPointerCapture(e.pointerId); // keep tracking the finger
+  if (e.pointerId === st.joy.id) cvs.setPointerCapture(e.pointerId);
 });
 addEventListener('pointerup', (e) => {
   if (e.pointerId === st.joy.id) releaseJoy();
@@ -27,7 +26,7 @@ addEventListener('pointercancel', (e) => {
 });
 addEventListener('keydown', (e) => {
   st.keys[e.key] = true;
-  st.keys[e.code] = true; // KeyA / KeyD / ArrowLeft... works on any keyboard layout
+  st.keys[e.code] = true;
   onKey(e);
 });
 addEventListener('keyup', (e) => {
@@ -35,12 +34,13 @@ addEventListener('keyup', (e) => {
   st.keys[e.code] = false;
 });
 addEventListener('blur', () => {
-  st.keys = {}; // don't leave keys "stuck" when the window loses focus
+  st.keys = {};
   if (st.state == 'play' && !st.mug.dead && !st.paused) {
     st.paused = true;
   }
 });
 window.focus();
+loadSave();
 loadAll().then(() => {
   cyc.reset();
   sky.reset(0);

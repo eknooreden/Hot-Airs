@@ -43,6 +43,8 @@ const st = {
   key: null,
   wasDown: false,
   windOn: false,
+  paid: 0, // cocoa already banked from the current story run
+  base: 0, // score the current run started from (the HUD counts cocoa earned past it)
 };
 const ord = (n) =>
   n % 100 >= 10 && n % 100 <= 20
@@ -172,6 +174,7 @@ const modeRect = {
     story: [(S - 460) / 2, 360, 460, 120],
     score: [(S - 460) / 2, 360 + 120 + 50, 460, 120],
   },
+  cpRect = (i) => [80 + (i % 3) * 290, 200 + Math.floor(i / 3) * 130, 260, 100],
   skipR = () => {
     const w = tw('skip all', S * 0.03) + 50,
       h = S * 0.03 * 1.35 + 24;
@@ -196,7 +199,7 @@ const DR = {
   ],
 };
 // ---- on-screen joystick (always shown) ----
-const JOY = { cx: 170, cy: 830, r: 105, kr: 48 };
+const JOY = { cx: 830, cy: 830, r: 105, kr: 48 }; // bottom-right, the item slots live bottom-left
 
 function setJoy(p) {
   const dx = p[0] - JOY.cx,
@@ -235,11 +238,13 @@ function startPlay() {
     st.resume = false;
     st.retryCP = false;
     m.reset();
+    m.cause = null;
     m.best = st.cpAlt;
     m.x = st.cpX;
     m.y = st.cpY;
     m.cam = st.cpCam;
     m.started = true;
+    st.base = m.score;
     cyc.story = true;
     cyc.reset();
     cyc.update(0, m.score);
@@ -251,8 +256,14 @@ function startPlay() {
     } else vines.reset(m.fy - st.cpAlt, st.cpCount);
     vines.night = cyc.night;
     st.grace = 3;
+    wx.target = weatherTarget(m.score, true);
+    weatherReset(true);
+    itemReset();
   } else {
     m.reset();
+    m.cause = null;
+    st.paid = 0;
+    st.base = 0;
     sky.reset(m.cam);
     cyc.story = st.mode == 'story';
     cyc.reset();
@@ -272,7 +283,30 @@ function startPlay() {
     }
     st.grace = 0;
     st.banner.age = null;
+    wx.target = 0;
+    weatherReset(true);
+    itemReset();
   }
+}
+// start a story run from checkpoint cp (0 = the very beginning)
+function beginStory(cp) {
+  const m = st.mug,
+    alt = (cp * CP) / 5; // altitude that scores cp * CP
+  st.mode = 'story';
+  st.cp = cp;
+  st.cpAlt = alt;
+  st.cpX = 0.5;
+  st.cpY = m.fy - alt;
+  st.cpCam = cp ? CAM - st.cpY : 0;
+  st.cpCount = 0;
+  st.cpV = null;
+  st.paid = cp * CP; // only cocoa earned past the starting point is paid out
+  st.resume = cp > 0;
+  st.retryCP = false;
+  st.ln = cp == 0 && !st.intro ? 'intro' : 'play';
+  st.intro = true;
+  st.load = new Loading();
+  setState('loading');
 }
 function onDown(p, id) {
   st.m = p;
@@ -287,6 +321,10 @@ function onDown(p, id) {
     return;
   }
   if (s == 'menu') {
+    if (upg.open) {
+      upgClick(p);
+      return;
+    }
     if (hit(rectOf('play'), p)) st.pressed = 'play';
     else if (hit(rectOf('up'), p)) st.pressed = 'up';
     return;
@@ -297,20 +335,22 @@ function onDown(p, id) {
     sfx(snd.click);
     st.mode = c;
     if (c == 'story') {
-      if (st.retryCP && st.cp > 0) {
-        st.resume = true;
-        st.ln = 'play';
-      } else {
-        st.resume = false;
-        st.ln = st.intro ? 'play' : 'intro';
-      }
-      st.intro = true;
-    } else {
-      st.resume = false;
-      st.ln = 'play';
+      setState('cpsel');
+      return;
     }
+    st.resume = false;
+    st.ln = 'play';
     st.load = new Loading();
     setState('loading');
+    return;
+  }
+  if (s == 'cpsel') {
+    for (let i = 0; i <= 10; i++)
+      if (i <= (save.maxCp | 0) && hit(cpRect(i), p)) {
+        sfx(snd.click);
+        beginStory(i);
+        return;
+      }
     return;
   }
   if (s == 'play') {
@@ -322,8 +362,19 @@ function onDown(p, id) {
       return;
     }
     if (st.pc > 0) return;
-    // touching the bottom-left corner grabs the joystick instead of flapping
-    if (!m.dead && p[0] < 420 && p[1] > 600) {
+    // tapping an item slot selects it (tap the selected one again to use it)
+    const si = m.dead ? -1 : slotAt(p);
+    if (si >= 0) {
+      if (ITEMS.sel == si) {
+        if (itemUse()) sfx(snd.click);
+      } else {
+        ITEMS.sel = si;
+        sfx(snd.sel);
+      }
+      return;
+    }
+    // touching the bottom-right corner grabs the joystick instead of flapping
+    if (!m.dead && p[0] > 580 && p[1] > 600) {
       st.joy.id = id;
       setJoy(p);
       return;
@@ -354,7 +405,7 @@ function onUp(p) {
         st.ft = 'mode';
         st.fa = 0;
         setState('fade');
-      }
+      } else if (b == 'up') upgOpen();
     }
     st.pressed = null;
   }
@@ -378,6 +429,15 @@ function onKey(e) {
       }
       return;
     }
+    if (s == 'menu' && upg.open) {
+      upgClose();
+      return;
+    }
+    if (s == 'cpsel') {
+      setState('mode');
+      st.lastMH = null;
+      return;
+    }
     if (s == 'mode') {
       setState('menu');
       st.pressed = null;
@@ -394,6 +454,19 @@ function onKey(e) {
   if (s == 'play') {
     const m = st.mug;
     if (st.paused || st.pc > 0) return;
+    if (!m.dead) {
+      // 1-5 pick an item slot, E uses the selected one
+      const dg = /^(Digit|Numpad)([1-5])$/.exec(e.code || '');
+      if (dg) {
+        ITEMS.sel = +dg[2] - 1;
+        sfx(snd.sel);
+        return;
+      }
+      if (e.code == 'KeyE') {
+        if (!e.repeat && itemUse()) sfx(snd.click);
+        return;
+      }
+    }
     if (m.dead) {
       if (k == 'Enter' && m.dt >= 1.7) deathAct('retry');
     } else if ([' ', 'ArrowUp', 'w', 'W'].includes(k) && !e.repeat && m.flap()) sfx(snd.hop);
@@ -454,7 +527,7 @@ function tick(dt, t) {
   const off = [s.norm[0] * S * 0.02, s.norm[1] * S * 0.02];
   if (s.state != 'menu') s.lastHover = null;
   if (s.state != 'play' && s.joy.id != null) releaseJoy();
-  if (s.state != 'mode') s.lastMH = null;
+  if (s.state != 'mode' && s.state != 'cpsel') s.lastMH = null;
   if (s.state == 'play' && s.last != 'play') startPlay();
   s.last = s.state;
   gl.viewport(0, 0, cw, ch);
@@ -466,6 +539,10 @@ function tick(dt, t) {
     flush();
   };
   // --- update
+  if (s.state == 'menu' || s.state == 'fade') {
+    upgUpdate(dt, t);
+    menuFxUpdate(dt, t, off);
+  }
   if (s.state == 'fade') {
     s.fa += dt / 0.9;
     if (s.fa >= 1) {
@@ -509,12 +586,26 @@ function tick(dt, t) {
     const run = !s.paused && s.pc <= 0;
     if (run && s.grace <= 0) vines.update(dt, m.cam, m.y + m.cam, m.score);
     if (run && !m.dead && s.grace <= 0 && vineHit(m, vines.time)) m.die();
+    if (run) {
+      wx.target = weatherTarget(m.score, s.mode == 'story');
+      weatherUpdate(dt, m, s.grace <= 0 && !m.dead);
+      if (!m.dead) itemsUpdate(dt);
+      if (!m.dead && s.grace <= 0 && wx.wet <= 0) {
+        m.cause = 'rain'; // soaked!
+        m.die();
+      }
+    }
     if (m.dead && !was) {
       const sc = Math.max(0, Math.floor(m.score)),
         nb = sc > s.hs[s.mode];
-      if (nb) s.hs[s.mode] = sc;
+      if (nb) s.hs[s.mode] = save.hs[s.mode] = sc;
       s.di = { score: sc, best: s.hs[s.mode], new: nb && sc > 0 };
-      if (s.mode == 'story') m.best = 0;
+      if (s.mode == 'story') {
+        // bank this run's cocoa (a retry from a checkpoint doesn't pay twice)
+        const gain = Math.max(0, sc - s.paid);
+        s.paid = Math.max(s.paid, sc);
+        save.wallet += gain;
+      }
       sfx(snd.death);
     }
     if (run) {
@@ -527,6 +618,7 @@ function tick(dt, t) {
     const reach = Math.min(10, Math.floor(m.score / CP));
     if (s.mode == 'story' && reach > s.cp && !m.dead) {
       s.cp = reach;
+      save.maxCp = Math.max(save.maxCp, reach);
       s.cpAlt = m.best;
       s.cpX = m.x;
       s.cpY = m.y;
@@ -575,20 +667,36 @@ function tick(dt, t) {
     snd.wind.pause();
     s.windOn = false;
   }
+  const rt = (s.state == 'play' || s.state == 'death_fade') && !s.paused ? wx.rain * 0.55 : 0;
+  s.rainV = (s.rainV || 0) + (rt - (s.rainV || 0)) * Math.min(1, 3 * dt);
+  if (s.rainV > 0.01) {
+    if (!s.rainOn) {
+      try {
+        snd.rain.play().catch(() => {});
+      } catch (e) {}
+      s.rainOn = true;
+    }
+    snd.rain.volume = Math.min(1, s.rainV);
+  } else if (s.rainOn) {
+    snd.rain.pause();
+    s.rainOn = false;
+  }
   // --- draw
   if (s.state != 'play' && s.state != 'death_fade') shk = [0, 0];
   gl.viewport(vx0 + shk[0], vy0 + shk[1], side, side);
   let mc = null;
   if (s.state == 'menu' || s.state == 'fade') {
     spr(A.bg, S / 2 + off[0], S / 2 + off[1], S * 1.04, S * 1.04);
-    const happy = hit(rectOf('play'), s.m) && s.state == 'menu';
+    fxDraw(fx.mid, t);
+    fxDraw(fx.back, t);
+    const happy = hit(rectOf('play'), s.m) && s.state == 'menu' && !upg.open;
     const bob = Math.sin(t * 1.5) * S * 0.015,
       mi = happy ? A.happy : A.bored;
     spr(mi, S * 0.88 + off[0] * 0.15, S * 0.8 + bob + off[1] * 0.15, (MH * mi.w) / mi.h, MH);
     let hov = null;
     for (const n of ['play', 'up']) {
       const r = rectOf(n),
-        h = s.state == 'menu' && hit(r, s.m),
+        h = s.state == 'menu' && !upg.open && hit(r, s.m),
         p = h && s.pressed == n,
         w = btnW(n == 'play' ? 'play' : 'up'),
         tn = n == 'play' ? A.play : A.up;
@@ -597,6 +705,7 @@ function tick(dt, t) {
         c: p ? [0.627, 0.627, 0.627] : h ? [0.843, 0.843, 0.843] : WH,
       });
     }
+    fxDraw(fx.top, t);
     if (s.state == 'menu' && hov == 'up') {
       const r = rectOf('up'),
         sz = S * 0.022,
@@ -609,6 +718,8 @@ function tick(dt, t) {
       bord(bx, by, w, h, 3, WH);
       tx(txt, sz, '#fff', bx + w / 2, by + h / 2, 'c');
     }
+    if (!upg.open) drawWallet(S * 0.03, S * 0.03 + S * 0.03, S * 0.045, '#fff', '#000');
+    upgDraw(t);
     if (s.state == 'menu') {
       if (hov && hov != s.lastHover) sfx(snd.sel);
       s.lastHover = hov;
@@ -635,6 +746,21 @@ function tick(dt, t) {
       tx(l, S * 0.05, '#000', r[0] + r[2] / 2, r[1] + r[3] / 2, 'c');
     }
     if (hv && hv != s.lastMH) sfx(snd.sel);
+    s.lastMH = hv;
+  } else if (s.state == 'cpsel') {
+    tx('Select Checkpoint', S * 0.06, '#fff', S / 2, 110, 'c');
+    tx('Esc to go back', S * 0.018, '#aaa', S / 2, 160, 'c');
+    let hv = null;
+    for (let i = 0; i <= 10; i++) {
+      const r = cpRect(i),
+        open = i <= (save.maxCp | 0),
+        h = open && hit(r, s.m);
+      if (h) hv = i;
+      rc(r[0], r[1], r[2], r[3], !open ? [0.25, 0.25, 0.25] : h ? [225 / 255, 225 / 255, 225 / 255] : WH);
+      tx(i ? 'Checkpoint ' + i : 'Start', S * 0.03, open ? '#000' : '#666', r[0] + r[2] / 2, r[1] + r[3] / 2 - 12, 'c');
+      tx(open ? i * CP + ' cocoa' : 'Locked', S * 0.018, open ? '#555' : '#666', r[0] + r[2] / 2, r[1] + r[3] / 2 + 26, 'c');
+    }
+    if (hv != null && hv !== s.lastMH) sfx(snd.sel);
     s.lastMH = hv;
   } else if (s.state == 'loading') {
     const a = s.load.alpha(),
@@ -688,7 +814,11 @@ function tick(dt, t) {
       tx(lb, sz, '#fff5d2', S / 2, S * 0.22, 'c');
     }
     hud(m, mc, s.mode == 'story');
-    if (!m.dead && !s.paused) drawJoy();
+    if (!m.dead && !s.paused) {
+      drawJoy();
+      drawSlots(t);
+      drawWetBar(t);
+    }
     if (s.paused) {
       rc(0, 0, S, S, [3 / 255, 5 / 255, 16 / 255], 0.69);
       tx('PAUSED', S * 0.1, '#f5f5ff', S / 2, S * 0.43, 'c');
@@ -740,14 +870,14 @@ function deathPopup(m) {
     5 * sc,
     WH.map((v) => v),
   );
-  const tt = (s, sz, col, x, y, f) => {
+  const tt = (s, sz, col, x, y) => {
     const [px, py] = tf(x, y);
-    tx(s, sz * sc, col, px, py, 'c', { a, sc: f });
+    tx(s, sz * sc, col, px, py, 'c', { a });
   };
-  tt('You Died!', S * 0.075, '#fff', cx, DP[1] + DP[3] * 0.07 + S * 0.05);
+  tt(st.mug.cause == 'rain' ? 'Soaked!' : 'You Died!', S * 0.075, '#fff', cx, DP[1] + DP[3] * 0.07 + S * 0.05);
   let y = DP[1] + DP[3] * 0.34 + S * 0.02;
   for (const s of ['Score: ' + di.score, 'Highest Score: ' + di.best]) {
-    tt(s, S * 0.036, '#fff', cx, y, 1);
+    tt(s, S * 0.036, '#fff', cx, y);
     y += S * 0.036 * 1.35 + DP[3] * 0.04;
   }
   if (di.new) tt('New Best!', S * 0.022, '#ffde96', cx, y + S * 0.01);

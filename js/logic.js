@@ -20,8 +20,10 @@ const cyc = {
     const day = sm((s + 0.3) / 0.62);
     this.night = 1 - day;
     this.warm = Math.exp(-((s / 0.22) ** 2));
-    this.sv = sm((s + 0.1) / 0.25);
-    this.mv = sm((0.1 - s) / 0.25) * (0.2 + 0.8 * this.night);
+    const rn = wx.rain; // rain dims the sun/moon and kills the warm sunrise glow
+    this.warm *= 1 - 0.8 * rn;
+    this.sv = sm((s + 0.1) / 0.25) * (1 - 0.8 * rn);
+    this.mv = sm((0.1 - s) / 0.25) * (0.2 + 0.8 * this.night) * (1 - 0.6 * rn);
     this.stv = sm((this.night - 0.3) / 0.7);
     const k = Math.max(0, Math.floor((a - Math.PI) / TAU));
     this.ph = k % 8;
@@ -51,10 +53,16 @@ const cyc = {
   sky() {
     let t = mixc(SKY, NT, this.night),
       b = mixc(SKY, NB, this.night);
-    return [mixc(t, DT, this.warm * 0.7), mixc(b, DB, this.warm * 0.85)];
+    t = mixc(t, DT, this.warm * 0.7);
+    b = mixc(b, DB, this.warm * 0.85);
+    const g = cl(wx.rain); // overcast: grey sky, darker at night
+    return [
+      mixc(t, mixc(RAIN_SKY_T, NT, this.night), g),
+      mixc(b, mixc(RAIN_SKY_B, NB, this.night), g),
+    ];
   },
   tint() {
-    return mixc(mixc(WH, NTI, this.night), DTI, this.warm * 0.45);
+    return mixc(mixc(mixc(WH, NTI, this.night), DTI, this.warm * 0.45), [0.8, 0.83, 0.88], cl(wx.rain) * 0.5);
   },
   ctint() {
     return mixc(mixc(WH, NCT, this.night), DCT, this.warm * 0.6);

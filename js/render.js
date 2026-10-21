@@ -113,7 +113,6 @@ function drawGame(off, now, mug, dt_) {
       );
     }
   }
-  // moon
   if (cyc.mv > 0.01) {
     const [mxp, myp] = [cyc.dm[0] * S + off[0] * 0.05, cyc.dm[1] * S + off[1] * 0.05],
       pw = 0.5 - 0.5 * Math.cos(now * 1.15);
@@ -152,7 +151,6 @@ function drawGame(off, now, mug, dt_) {
       }
     }
   }
-  // sun
   if (cyc.sv > 0.01) {
     const sx = cyc.sp[0] * S,
       sy = cyc.sp[1] * S;
@@ -181,6 +179,7 @@ function drawGame(off, now, mug, dt_) {
     }
   };
   cloudDraw(sky.clouds);
+  drawStorm(off);
   const tp = treesPos(off, cam);
   spr(A.trees, ...tp, { c: tint });
   if (!dead) {
@@ -229,7 +228,6 @@ function drawGame(off, now, mug, dt_) {
         spr(G.pumpGlow, gx, g.y + g.h / 2, gd, gd, { b: 1, c: [lv, lv, lv] });
       }
     }
-  // mug
   let mx, my, img, ang;
   shk = [0, 0];
   if (dead) {
@@ -273,6 +271,7 @@ function drawGame(off, now, mug, dt_) {
         { a: (s.a / 255) * 1.4 },
       );
   }
+  drawRain();
   const mAmt = (cyc.full ? cyc.mv : 0) * fade * 0.75;
   if (mAmt > 0.03) lightFx(cyc.dm, [175 / 255, 205 / 255, 1], mAmt, false, mug, off, cam);
   const k = cyc.sv * fade;
@@ -306,7 +305,7 @@ function hud(mug, mc, story) {
   const mg = S * 0.03,
     gap = S * 0.015,
     so = Math.max(1, S * 0.004),
-    txt = String(Math.floor(mug.score)),
+    txt = String(Math.max(0, Math.floor(mug.score - st.base))),
     sz = S * 0.05;
   if (!story) {
     if (!mug.dead) {

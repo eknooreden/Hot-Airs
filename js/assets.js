@@ -90,6 +90,7 @@ async function loadAll() {
   A.dead = await L('mugs/dead_mug.png', 100, 120, '#7a4a2a');
   A.trees = await L('bg/trees.png', 1000, 300, '#10301c');
   A.cocoa = await L('cocoa_currency.png', 60, 60, '#6b3a1e');
+  A.umbrella = await L('upgrades/umbrella.png', 100, 100, '#4aa3ff');
   const moons = {};
   for (const n of [
     'waxing_crescent',
@@ -142,6 +143,7 @@ async function loadAll() {
   snd.hop = audio('hop.mp3', 1);
   snd.wind = audio('wind.mp3', 0, true);
   snd.done = audio('loading_done.mp3', 1);
+  snd.rain = audio('rain_ambience.mp3', 0, true);
   MUG = { w: (S * MUGH * A.bored.w) / A.bored.h, h: S * MUGH };
   buildFx();
 }
